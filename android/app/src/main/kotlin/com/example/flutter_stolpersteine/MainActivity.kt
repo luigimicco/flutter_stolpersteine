@@ -1,4 +1,4 @@
-package com.example.flutter_stolpersteine
+package com.example.stolpersteine
 
 import io.flutter.embedding.android.FlutterActivity
 

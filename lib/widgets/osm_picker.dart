@@ -1,8 +1,10 @@
 // ignore_for_file: public_member_api_docs, sort_constructors_first
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
+import 'package:dio/dio.dart';
 
-import 'package:flutter/foundation.dart';
+//import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_cancellable_tile_provider/flutter_map_cancellable_tile_provider.dart';
@@ -11,44 +13,28 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
-import 'wide_button.dart';
+import '../data/db.dart';
+import 'options_card.dart';
 
 class OpenStreetMapSearchAndPick extends StatefulWidget {
-  final void Function(PickedData pickedData) onPicked;
-  final IconData zoomInIcon;
-  final IconData zoomOutIcon;
   final IconData currentLocationIcon;
+  final IconData resetIcon;
   final IconData locationPinIcon;
-  final Color buttonColor;
   final Color buttonTextColor;
   final Color locationPinIconColor;
   final String locationPinText;
   final TextStyle locationPinTextStyle;
-  final String buttonText;
-  final String hintText;
-  final double buttonHeight;
-  final double buttonWidth;
-  final TextStyle buttonTextStyle;
   final String baseUri;
 
   const OpenStreetMapSearchAndPick({
     super.key,
-    required this.onPicked,
-    this.zoomOutIcon = Icons.zoom_out_map,
-    this.zoomInIcon = Icons.zoom_in_map,
     this.currentLocationIcon = Icons.my_location,
-    this.buttonColor = Colors.blue,
+    this.resetIcon = Icons.near_me,
     this.locationPinIconColor = Colors.blue,
     this.locationPinText = 'Location',
     this.locationPinTextStyle = const TextStyle(
         fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blue),
-    this.hintText = 'Search Location',
-    this.buttonTextStyle = const TextStyle(
-        fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
-    this.buttonTextColor = Colors.white,
-    this.buttonText = 'Set Current Location',
-    this.buttonHeight = 50,
-    this.buttonWidth = 200,
+    this.buttonTextColor = Colors.black38,
     this.baseUri = 'https://nominatim.openstreetmap.org',
     this.locationPinIcon = Icons.location_on,
   });
@@ -62,13 +48,21 @@ class _OpenStreetMapSearchAndPickState
     extends State<OpenStreetMapSearchAndPick> {
   static const _useTransformerId = 'useTransformerId';
 
+  var reCenter = false;
+  bool _isLoading = false;
+  bool _isSearching = false;
+
+  bool _canSearch = true;
+
   MapController _mapController = MapController();
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
-  List<OSMdata> _options = <OSMdata>[];
   Timer? _debounce;
   var client = http.Client();
   late Future<Position?> latlongFuture;
+
+  late List<dynamic> stolpersteins = [];
+  List<dynamic> _options = [];
 
   Future<Position?> getCurrentPosLatLong() async {
     LocationPermission locationPermission = await Geolocator.checkPermission();
@@ -81,7 +75,7 @@ class _OpenStreetMapSearchAndPickState
 
     /// have location permission
     Position position = await Geolocator.getCurrentPosition();
-    setNameCurrentPosAtInit(position.latitude, position.longitude);
+    //setNameCurrentPosAtInit(position.latitude, position.longitude);
     return position;
   }
 
@@ -91,10 +85,11 @@ class _OpenStreetMapSearchAndPickState
       return null;
     }
     Position position = await Geolocator.getCurrentPosition();
-    setNameCurrentPosAtInit(position.latitude, position.longitude);
+    //setNameCurrentPosAtInit(position.latitude, position.longitude);
     return position;
   }
 
+/*
   void setNameCurrentPos() async {
     double latitude = _mapController.camera.center.latitude;
     double longitude = _mapController.camera.center.longitude;
@@ -108,13 +103,15 @@ class _OpenStreetMapSearchAndPickState
     // var response = await client.post(Uri.parse(url));
     var decodedResponse =
         jsonDecode(utf8.decode(response.bodyBytes)) as Map<dynamic, dynamic>;
-
+/*
     _searchController.text =
         decodedResponse['display_name'] ?? "MOVE TO CURRENT POSITION";
+*/
     setState(() {});
   }
+*/
 
-  void setNameCurrentPosAtInit(double latitude, double longitude) async {
+/*   void setNameCurrentPosAtInit(double latitude, double longitude) async {
     if (kDebugMode) {
       print("$latitude, $longitude");
     }
@@ -126,33 +123,34 @@ class _OpenStreetMapSearchAndPickState
     // var response = await client.post(Uri.parse(url));
     var decodedResponse =
         jsonDecode(utf8.decode(response.bodyBytes)) as Map<dynamic, dynamic>;
-
+/*
     _searchController.text =
         decodedResponse['display_name'] ?? "MOVE TO CURRENT POSITION";
-  }
+*/
+  } */
 
   @override
   void initState() {
+    super.initState();
     _mapController = MapController();
 
     _mapController.mapEventStream.listen(
       (event) async {
-        if (event is MapEventMoveEnd) {
-          var client = http.Client();
-          String url =
-              '${widget.baseUri}/reverse?format=json&lat=${event.camera.center.latitude}&lon=${event.camera.center.longitude}&zoom=18&addressdetails=1';
-
-          var response = await client.get(Uri.parse(url));
-          // var response = await client.post(Uri.parse(url));
-          var decodedResponse = jsonDecode(utf8.decode(response.bodyBytes))
-              as Map<dynamic, dynamic>;
-
-          _searchController.text = decodedResponse['display_name'];
+        if ((!_canSearch && _mapController.camera.zoom >= 9) ||
+            (_canSearch && _mapController.camera.zoom < 9)) {
+          setState(() {
+            _canSearch = _mapController.camera.zoom >= 9;
+          });
+        }
+        if (reCenter) {
+          reCenter = false;
+          print("Trovati: ${stolpersteins.length}");
           setState(() {});
         }
+
+//        }
       },
     );
-
     latlongFuture = getCurrentPosLatLong();
 
     super.initState();
@@ -160,6 +158,7 @@ class _OpenStreetMapSearchAndPickState
 
   @override
   void dispose() {
+    _searchController.dispose();
     _mapController.dispose();
     super.dispose();
   }
@@ -167,12 +166,12 @@ class _OpenStreetMapSearchAndPickState
   @override
   Widget build(BuildContext context) {
     // String? _autocompleteSelection;
-    OutlineInputBorder inputBorder = OutlineInputBorder(
-      borderSide: BorderSide(color: widget.buttonColor),
-    );
-    OutlineInputBorder inputFocusBorder = OutlineInputBorder(
-      borderSide: BorderSide(color: widget.buttonColor, width: 3.0),
-    );
+/*     OutlineInputBorder inputBorder = OutlineInputBorder(
+      borderSide: BorderSide(color: Colors.white),
+    ); */
+/*     OutlineInputBorder inputFocusBorder = OutlineInputBorder(
+      borderSide: BorderSide(color: Colors.white, width: 3.0),
+    ); */
     return FutureBuilder<Position?>(
       future: latlongFuture,
       builder: (context, snapshot) {
@@ -195,85 +194,160 @@ class _OpenStreetMapSearchAndPickState
           child: Stack(
             children: [
               Positioned.fill(
-                child: FlutterMap(
-                  options: MapOptions(
-                      initialCenter: mapCentre!,
-                      initialZoom: 15.0,
-                      maxZoom: 18,
-                      minZoom: 6),
-                  mapController: _mapController,
-                  children: [
-                    TileLayer(
-                      urlTemplate:
-                          "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-                      userAgentPackageName: 'com.example.app',
-                      tileUpdateTransformer: _animatedMoveTileUpdateTransformer,
-                      tileProvider: CancellableNetworkTileProvider(),
-                    ),
-                  ],
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.grab,
+                  child: FlutterMap(
+                    options: MapOptions(
+                        initialCenter: mapCentre!,
+                        initialZoom: 15.0,
+                        maxZoom: 18,
+                        minZoom: 6),
+                    mapController: _mapController,
+                    children: [
+                      TileLayer(
+                        urlTemplate:
+                            "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                        userAgentPackageName: 'it.luigimicco.stolperstein',
+                        tileUpdateTransformer:
+                            _animatedMoveTileUpdateTransformer,
+                        tileProvider: CancellableNetworkTileProvider(),
+                      ),
+                      MarkerLayer(
+                        markers: [
+                          for (var stolperstein in stolpersteins)
+                            Marker(
+                              point: LatLng(stolperstein[1], stolperstein[2]),
+                              width: 80,
+                              height: 80,
+                              child: InkWell(
+                                onTap: () async {
+                                  setState(() {
+                                    _isLoading = true;
+                                  });
+                                  var response = await Dio().get(
+                                      'https://overpass-api.de/api/interpreter?data=[out:json][timeout:25];node(id:${stolperstein[0]});out;');
+                                  List<dynamic> items = json
+                                      .decode(response.toString())['elements'];
+
+                                  Map<String, dynamic> tags = items[0]['tags'];
+                                  if (tags.containsKey("memorial:name"))
+                                    tags.remove("memorial:name");
+                                  if (tags.containsKey("name"))
+                                    tags.remove("name");
+                                  if (tags.containsKey("memorial"))
+                                    tags.remove("memorial");
+                                  if (tags.containsKey("historic"))
+                                    tags.remove("historic");
+                                  if (tags.containsKey("network"))
+                                    tags.remove("network");
+
+                                  if (tags.containsKey("image") &&
+                                      tags['image']
+                                          .toString()
+                                          .startsWith("File:"))
+                                    tags.remove("image");
+
+                                  List<Widget> rows = [];
+                                  tags.forEach((k, v) {
+                                    return rows.add(OptionCard(
+                                      label: k,
+                                      caption: v,
+                                    ));
+                                  });
+                                  setState(() {
+                                    _isLoading = false;
+                                  });
+                                  showDialog(
+                                    context: context,
+                                    builder: (BuildContext context) {
+                                      return AlertDialog(
+                                        title: Text(stolperstein[3]),
+                                        content: SingleChildScrollView(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: <Widget>[
+                                              for (var tag in rows) tag,
+                                            ],
+                                          ),
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            child: Text("Close"),
+                                            onPressed: () {
+                                              Navigator.of(context).pop();
+                                            },
+                                          )
+                                        ],
+                                      );
+                                    },
+                                  );
+                                },
+                                child: Icon(
+                                  shadows: [
+                                    Shadow(
+                                      color: Color.fromRGBO(0, 0, 0, 0.5),
+                                      offset: Offset(2, 2),
+                                      blurRadius: 1,
+                                    ),
+                                  ],
+                                  Icons.location_pin,
+                                  color: Colors.blue,
+                                  size: 48,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(widget.locationPinText,
-                            style: widget.locationPinTextStyle,
-                            textAlign: TextAlign.center),
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 50),
-                          child: Icon(
-                            widget.locationPinIcon,
-                            size: 50,
-                            color: widget.locationPinIconColor,
+              Visibility(
+                visible: false,
+                replacement: Container(),
+                child: Positioned.fill(
+                  child: IgnorePointer(
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(widget.locationPinText,
+                              style: widget.locationPinTextStyle,
+                              textAlign: TextAlign.center),
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 50),
+                            child: Icon(
+                              widget.locationPinIcon,
+                              size: 50,
+                              color: widget.locationPinIconColor,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
               ),
+              if (_isLoading)
+                Positioned(
+                    bottom: 0,
+                    left: 0,
+                    top: 0,
+                    right: 0,
+                    child: const Center(
+                      child: CircularProgressIndicator(),
+                    )),
               Positioned(
-                bottom: 180,
+                top: 15,
                 right: 5,
                 child: FloatingActionButton(
-                  heroTag: 'btn1',
-                  backgroundColor: widget.buttonColor,
-                  onPressed: () {
-                    _mapController.move(_mapController.camera.center,
-                        _mapController.camera.zoom + 1);
-                  },
-                  child: Icon(
-                    widget.zoomInIcon,
-                    color: widget.buttonTextColor,
-                  ),
-                ),
-              ),
-              Positioned(
-                bottom: 120,
-                right: 5,
-                child: FloatingActionButton(
-                  heroTag: 'btn2',
-                  backgroundColor: widget.buttonColor,
-                  onPressed: () {
-                    _mapController.move(_mapController.camera.center,
-                        _mapController.camera.zoom - 1);
-                  },
-                  child: Icon(
-                    widget.zoomOutIcon,
-                    color: widget.buttonTextColor,
-                  ),
-                ),
-              ),
-              Positioned(
-                bottom: 60,
-                right: 5,
-                child: FloatingActionButton(
-                  heroTag: 'btn3',
-                  backgroundColor: widget.buttonColor,
+                  mini: true,
+                  heroTag: 'recenter',
+                  backgroundColor: Colors.white,
                   onPressed: () async {
+                    reCenter = true;
                     if (mapCentre != null) {
                       _mapController.move(
                           LatLng(mapCentre.latitude, mapCentre.longitude),
@@ -282,7 +356,7 @@ class _OpenStreetMapSearchAndPickState
                       _mapController.move(
                           LatLng(50.5, 30.51), _mapController.camera.zoom);
                     }
-                    setNameCurrentPos();
+                    //setNameCurrentPos();
                   },
                   child: Icon(
                     widget.currentLocationIcon,
@@ -291,67 +365,141 @@ class _OpenStreetMapSearchAndPickState
                 ),
               ),
               Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: Container(
-                  margin: const EdgeInsets.all(15),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(5),
+                bottom: 8,
+                right: 5,
+                child: FloatingActionButton(
+                  mini: true,
+                  heroTag: 'reset',
+                  backgroundColor: Colors.white,
+                  onPressed: () async {
+                    reCenter = true;
+                    _mapController.rotate(0);
+                    //setNameCurrentPos();
+                  },
+                  child: Icon(
+                    widget.resetIcon,
+                    color: widget.buttonTextColor,
                   ),
+                ),
+              ),
+              Positioned(
+                top: 15,
+                left: 5,
+                child: FloatingActionButton(
+                  mini: true,
+                  heroTag: 'info',
+                  backgroundColor: Colors.white,
+                  onPressed: () => showDialog<String>(
+                    context: context,
+                    builder: (BuildContext context) => Dialog(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.start,
+                          children: <Widget>[
+                            const Text(
+                              'Stolpersteine v. 1.0.0',
+                              style: TextStyle(
+                                  fontSize: 16, fontWeight: FontWeight.bold),
+                            ),
+                            const Text(
+                              'Questa applicazione permette di evidenziare su una mappa la posizione delle Pietre di Inciampo ' +
+                                  'memorizzate come punti di interesse nel database di Open Street Map',
+                              style: TextStyle(
+                                  fontSize: 14, fontWeight: FontWeight.normal),
+                            ),
+                            const SizedBox(height: 15),
+                            TextButton(
+                              onPressed: () {
+                                Navigator.pop(context);
+                              },
+                              child: const Text('Close'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  child: Icon(
+                    Icons.question_mark,
+                    color: widget.buttonTextColor,
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 15,
+                left: 55,
+                right: 55,
+                child: Container(
+                  //margin: const EdgeInsets.all(15),
+                  decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.grey.withValues(alpha: 0.5),
+                          spreadRadius: 2,
+                          blurRadius: 5,
+                          offset: Offset(0, 3), // changes position of shadow
+                        ),
+                      ]),
                   child: Column(
                     children: [
                       TextFormField(
-                          controller: _searchController,
-                          focusNode: _focusNode,
-                          decoration: InputDecoration(
-                            hintText: widget.hintText,
-                            border: inputBorder,
-                            focusedBorder: inputFocusBorder,
+                        maxLines: 1,
+                        controller: _searchController,
+                        focusNode: _focusNode,
+                        keyboardType: TextInputType.text,
+                        decoration: InputDecoration(
+                          contentPadding: EdgeInsets.only(right: 16),
+                          filled: false,
+                          isDense: true,
+                          hintText: 'search by name ...',
+                          prefixIcon: _isSearching
+                              ? SizedBox(
+                                  height: 6,
+                                  width: 6,
+                                  child: Center(
+                                      child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  )))
+                              : Icon(Icons.search, size: 22),
+                          border: OutlineInputBorder(
+                            borderSide: BorderSide.none,
                           ),
-                          onChanged: (String value) {
-                            if (_debounce?.isActive ?? false) {
-                              _debounce?.cancel();
-                            }
-
+                        ),
+                        onChanged: (String value) {
+                          if (_debounce?.isActive ?? false) {
+                            _debounce?.cancel();
+                          }
+                          setState(() {
+                            _isSearching = (value.length > 3);
+                          });
+                          if (value.length > 3) {
                             _debounce = Timer(
-                                const Duration(milliseconds: 2000), () async {
-                              if (kDebugMode) {
-                                print(value);
-                              }
-                              var client = http.Client();
-                              try {
-                                String url =
-                                    '${widget.baseUri}/search?q=$value&format=json&polygon_geojson=1&addressdetails=1';
-                                if (kDebugMode) {
-                                  print(url);
-                                }
-                                var response = await client.get(Uri.parse(url));
-                                // var response = await client.post(Uri.parse(url));
-                                var decodedResponse =
-                                    jsonDecode(utf8.decode(response.bodyBytes))
-                                        as List<dynamic>;
-                                if (kDebugMode) {
-                                  print(decodedResponse);
-                                }
-                                _options = decodedResponse
-                                    .map(
-                                      (e) => OSMdata(
-                                        displayname: e['display_name'],
-                                        lat: double.parse(e['lat']),
-                                        lon: double.parse(e['lon']),
-                                      ),
-                                    )
-                                    .toList();
-                                setState(() {});
-                              } finally {
-                                client.close();
-                              }
+                                const Duration(milliseconds: 1000), () async {
+                              value = value.toLowerCase();
+                              List<dynamic> res = db.where((item) {
+                                return item[3]
+                                    .toString()
+                                    .toLowerCase()
+                                    .contains(value);
+                              }).toList();
 
-                              setState(() {});
+                              setState(() {
+                                _options = res;
+                                _isSearching = false;
+                              });
                             });
-                          }),
+                          } else {
+                            setState(() {
+                              _options = [];
+                              _isSearching = false;
+                            });
+                          }
+                        },
+                      ),
                       StatefulBuilder(
                         builder: ((context, setState) {
                           return ListView.builder(
@@ -361,18 +509,22 @@ class _OpenStreetMapSearchAndPickState
                                 _options.length > 5 ? 5 : _options.length,
                             itemBuilder: (context, index) {
                               return ListTile(
-                                title: Text(_options[index].displayname),
-                                subtitle: Text(
-                                    '${_options[index].lat},${_options[index].lon}'),
+                                dense: true,
+                                title: Text(_options[index][3]),
                                 onTap: () {
+                                  reCenter = true;
+                                  setState(() {
+                                    _searchController.text = "";
+                                    stolpersteins.clear();
+                                    stolpersteins.add(_options[index]);
+                                  });
                                   _mapController.move(
-                                      LatLng(_options[index].lat,
-                                          _options[index].lon),
+                                      LatLng(_options[index][1],
+                                          _options[index][2]),
                                       15.0);
-
                                   _focusNode.unfocus();
                                   _options.clear();
-                                  setState(() {});
+                                  //setState(() {});
                                 },
                               );
                             },
@@ -383,28 +535,55 @@ class _OpenStreetMapSearchAndPickState
                   ),
                 ),
               ),
-              Positioned(
-                bottom: 0,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: WideButton(
-                      widget.buttonText,
-                      textStyle: widget.buttonTextStyle,
-                      height: widget.buttonHeight,
-                      width: widget.buttonWidth,
-                      onPressed: () async {
-                        final value = await pickData();
-                        widget.onPicked(value);
-                      },
-                      backgroundColor: widget.buttonColor,
-                      foregroundColor: widget.buttonTextColor,
+              if (_canSearch)
+                Positioned(
+                  bottom: 0,
+                  left: 30,
+                  right: 30,
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: ElevatedButton(
+                        style: ButtonStyle(
+                            backgroundColor:
+                                WidgetStateProperty.all(Colors.white),
+                            foregroundColor: WidgetStateProperty.all(
+                                Color.fromRGBO(0, 0, 0, .7))),
+                        onPressed: () async {
+                          setState(() {
+                            _isLoading = true;
+                          });
+
+                          reCenter = false;
+
+                          double minRay = min(
+                                  _mapController.camera.visibleBounds.north -
+                                      _mapController.camera.visibleBounds.south,
+                                  _mapController.camera.visibleBounds.east -
+                                      _mapController
+                                          .camera.visibleBounds.west) /
+                              2;
+                          minRay = pow(minRay, 2) as double;
+
+                          final res = db.where((item) {
+                            double dy = (item[1] as double) -
+                                _mapController.camera.center.latitude;
+                            double dx = (item[2] as double) -
+                                _mapController.camera.center.longitude;
+
+                            return (pow(dx, 2) + pow(dy, 2)) <= minRay;
+                          }).toList();
+                          print("Trovati: ${res.length}");
+                          setState(() {
+                            stolpersteins = res;
+                            _isLoading = false;
+                          });
+                        },
+                        child: Text('Search here'),
+                      ),
                     ),
                   ),
-                ),
-              )
+                )
             ],
           ),
         );
@@ -412,7 +591,7 @@ class _OpenStreetMapSearchAndPickState
     );
   }
 
-  Future<PickedData> pickData() async {
+/*   Future<PickedData> pickData() async {
     LatLong center = LatLong(_mapController.camera.center.latitude,
         _mapController.camera.center.longitude);
     var client = http.Client();
@@ -425,7 +604,7 @@ class _OpenStreetMapSearchAndPickState
         jsonDecode(utf8.decode(response.bodyBytes)) as Map<dynamic, dynamic>;
     String displayName = decodedResponse['display_name'];
     return PickedData(center, displayName, decodedResponse["address"]);
-  }
+  } */
 
   /// Inspired by the contribution of [rorystephenson](https://github.com/fleaflet/flutter_map/pull/1475/files#diff-b663bf9f32e20dbe004bd1b58a53408aa4d0c28bcc29940156beb3f34e364556)
   final _animatedMoveTileUpdateTransformer = TileUpdateTransformer.fromHandlers(
@@ -463,38 +642,16 @@ class _OpenStreetMapSearchAndPickState
   );
 }
 
-class OSMdata {
-  final String displayname;
-  final double lat;
-  final double lon;
-  OSMdata({required this.displayname, required this.lat, required this.lon});
-  @override
-  String toString() {
-    return '$displayname, $lat, $lon';
-  }
-
-  @override
-  bool operator ==(Object other) {
-    if (other.runtimeType != runtimeType) {
-      return false;
-    }
-    return other is OSMdata && other.displayname == displayname;
-  }
-
-  @override
-  int get hashCode => Object.hash(displayname, lat, lon);
-}
-
 class LatLong {
   final double latitude;
   final double longitude;
   const LatLong(this.latitude, this.longitude);
 }
 
-class PickedData {
+/* class PickedData {
   final LatLong latLong;
   final String addressName;
   final Map<String, dynamic> address;
 
   PickedData(this.latLong, this.addressName, this.address);
-}
+} */

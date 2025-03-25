@@ -1,7 +1,7 @@
-name: flutter_stolpersteine
-description: "Stolpersteine on OSM map"
+name: stolpersteine
+description: "Stolpersteine - Pietre di inciampo"
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
-version: 0.0.0+1
+version: 1.0.0+1
 
 environment:
   sdk: ^3.6.0
@@ -17,6 +17,8 @@ dependencies:
   latlong2: ^0.9.1
   flutter_map_cancellable_tile_provider: ^3.0.2
   flutter_map_animations: ^0.8.0
+  dio: ^5.8.0+1
+  url_launcher: ^6.3.1
 
 dev_dependencies:
   flutter_test:

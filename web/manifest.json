@@ -1,6 +1,6 @@
 {
-    "name": "flutter_stolpersteine",
-    "short_name": "flutter_stolpersteine",
+    "name": "stolpersteine",
+    "short_name": "stolpersteine",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

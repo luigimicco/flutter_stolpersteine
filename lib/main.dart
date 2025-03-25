@@ -17,41 +17,7 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
-      home: const MyHomePage(title: 'Flutter Stolpersteine'),
+      home: const Scaffold(body: OpenStreetMapSearchAndPick()),
     );
-  }
-}
-
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  final String title;
-
-  @override
-  State<MyHomePage> createState() => _MyHomePageState();
-}
-
-class _MyHomePageState extends State<MyHomePage> {
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-        appBar: AppBar(
-          title: Text(widget.title),
-        ),
-        body: OpenStreetMapSearchAndPick(
-          buttonTextStyle:
-              const TextStyle(fontSize: 18, fontStyle: FontStyle.normal),
-          buttonColor: Colors.blue,
-          buttonText: 'Set Current Location',
-          onPicked: (pickedData) {
-            // ignore: avoid_print
-            print(
-                "${pickedData.latLong.latitude}, ${pickedData.latLong.longitude}");
-            // ignore: avoid_print
-            print(pickedData.address);
-            // ignore: avoid_print
-            print(pickedData.addressName);
-          },
-        ));
   }
 }
