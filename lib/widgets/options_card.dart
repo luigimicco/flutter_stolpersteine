@@ -41,6 +41,7 @@ class OptionCard extends StatelessWidget {
                     final Uri url = Uri.parse(caption.toString());
                     try {
                       await launchUrl(url);
+                      // ignore: empty_catches
                     } catch (e) {}
                   }
                 : null,
