@@ -4,7 +4,6 @@ import 'dart:math';
 import 'package:dio/dio.dart';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_cancellable_tile_provider/flutter_map_cancellable_tile_provider.dart';
 import 'package:flutter_map_animations/flutter_map_animations.dart';
@@ -88,46 +87,6 @@ class _OpenStreetMapSearchAndPickState
     return position;
   }
 
-/*
-  void setNameCurrentPos() async {
-    double latitude = _mapController.camera.center.latitude;
-    double longitude = _mapController.camera.center.longitude;
-    if (kDebugMode) {
-      print("$latitude, $longitude");
-    }
-    String url =
-        '${widget.baseUri}/reverse?format=json&lat=$latitude&lon=$longitude&zoom=18&addressdetails=1';
-
-    var response = await client.get(Uri.parse(url));
-    // var response = await client.post(Uri.parse(url));
-    var decodedResponse =
-        jsonDecode(utf8.decode(response.bodyBytes)) as Map<dynamic, dynamic>;
-/*
-    _searchController.text =
-        decodedResponse['display_name'] ?? "MOVE TO CURRENT POSITION";
-*/
-    setState(() {});
-  }
-*/
-
-/*   void setNameCurrentPosAtInit(double latitude, double longitude) async {
-    if (kDebugMode) {
-      print("$latitude, $longitude");
-    }
-
-    String url =
-        '${widget.baseUri}/reverse?format=json&lat=$latitude&lon=$longitude&zoom=18&addressdetails=1';
-
-    var response = await client.get(Uri.parse(url));
-    // var response = await client.post(Uri.parse(url));
-    var decodedResponse =
-        jsonDecode(utf8.decode(response.bodyBytes)) as Map<dynamic, dynamic>;
-/*
-    _searchController.text =
-        decodedResponse['display_name'] ?? "MOVE TO CURRENT POSITION";
-*/
-  } */
-
   @override
   void initState() {
     super.initState();
@@ -143,7 +102,6 @@ class _OpenStreetMapSearchAndPickState
         }
         if (reCenter) {
           reCenter = false;
-          print("Trovati: ${stolpersteins.length}");
           setState(() {});
         }
 
@@ -164,18 +122,6 @@ class _OpenStreetMapSearchAndPickState
 
   @override
   Widget build(BuildContext context) {
-    SystemChrome.setSystemUIOverlayStyle(
-      SystemUiOverlayStyle(
-        statusBarColor: Color.fromRGBO(0, 0, 0, 0),
-      ),
-    );
-    // String? _autocompleteSelection;
-/*     OutlineInputBorder inputBorder = OutlineInputBorder(
-      borderSide: BorderSide(color: Colors.white),
-    ); */
-/*     OutlineInputBorder inputFocusBorder = OutlineInputBorder(
-      borderSide: BorderSide(color: Colors.white, width: 3.0),
-    ); */
     return FutureBuilder<Position?>(
       future: latlongFuture,
       builder: (context, snapshot) {
@@ -226,26 +172,48 @@ class _OpenStreetMapSearchAndPickState
                                 setState(() {
                                   _isLoading = true;
                                 });
+
+                                double latitude = stolperstein[1];
+                                double longitude = stolperstein[2];
+                                String url =
+                                    '${widget.baseUri}/reverse?format=json&lat=$latitude&lon=$longitude&zoom=18';
+
+                                var addrResponse =
+                                    await client.get(Uri.parse(url));
+
+                                //print(utf8.decode(addrResponse.bodyBytes));
+
+                                var decodedResponse = jsonDecode(
+                                        utf8.decode(addrResponse.bodyBytes))
+                                    as Map<dynamic, dynamic>;
+                                String address =
+                                    decodedResponse['display_name'] ?? "";
+                                address = address
+                                    .replaceFirst(stolperstein[3] + ",", "")
+                                    .trim();
+
                                 var response = await Dio().get(
                                     'https://overpass-api.de/api/interpreter?data=[out:json][timeout:25];node(id:${stolperstein[0]});out;');
                                 List<dynamic> items = json
                                     .decode(response.toString())['elements'];
 
                                 Map<String, dynamic> tags = items[0]['tags'];
-                                if (tags.containsKey("memorial:name")) {
-                                  tags.remove("memorial:name");
-                                }
-                                if (tags.containsKey("name")) {
-                                  tags.remove("name");
-                                }
-                                if (tags.containsKey("memorial")) {
-                                  tags.remove("memorial");
-                                }
-                                if (tags.containsKey("historic")) {
-                                  tags.remove("historic");
-                                }
-                                if (tags.containsKey("network")) {
-                                  tags.remove("network");
+
+                                List<String> removeTags = [
+                                  "wikimedia_commons",
+                                  "memorial:name",
+                                  "name",
+                                  "memorial",
+                                  "historic",
+                                  "network",
+                                  "wikidata",
+                                  "subject:wikidata"
+                                ];
+
+                                for (var tag in removeTags) {
+                                  if (tags.containsKey(tag)) {
+                                    tags.remove(tag);
+                                  }
                                 }
 
                                 if (tags.containsKey("image") &&
@@ -277,6 +245,13 @@ class _OpenStreetMapSearchAndPickState
                                               CrossAxisAlignment.start,
                                           mainAxisSize: MainAxisSize.min,
                                           children: <Widget>[
+                                            if (address.isNotEmpty)
+                                              Text(address,
+                                                  style: TextStyle(
+                                                      fontStyle:
+                                                          FontStyle.italic,
+                                                      fontSize: 12)),
+                                            if (address.isNotEmpty) Divider(),
                                             for (var tag in rows) tag,
                                           ],
                                         ),
@@ -424,7 +399,7 @@ class _OpenStreetMapSearchAndPickState
                               ),
                               const Text(
                                 'Questa applicazione permette di evidenziare su una mappa la posizione delle Pietre di Inciampo ' +
-                                    'memorizzate come punti di interesse nel database di Open Street Map',
+                                    'memorizzate come punti di interesse nel database di Open Street Map.',
                                 style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.normal),
@@ -594,7 +569,6 @@ class _OpenStreetMapSearchAndPickState
 
                               return (pow(dx, 2) + pow(dy, 2)) <= minRay;
                             }).toList();
-                            print("Trovati: ${res.length}");
                             setState(() {
                               stolpersteins = res;
                               _isLoading = false;
